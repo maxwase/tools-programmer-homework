@@ -1,12 +1,24 @@
 [package]
-name = "tools-programmer-homework"
+name = "disassembler-server"
 version = "0.1.0"
 edition = "2021"
+
+[[bin]]
+name = "disassembler-server"
+
+[lib]
+name = "disassembler"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 axum = "0.7"
 serde = { version = "1", features = ["derive"] }
+serde_with = { version = "3.9.0", features = ["json"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
-reqwest = { version = "0.11.20", features = ["json"]}
+reqwest = { version = "0.12.5", features = ["json"] }
+thiserror = "1.0.63"
+
+# Disassemblers
+rs6502 ={ git = "https://github.com/simon-whitehead/rs6502.git" }
+iced-x86 = "1.21.0"
