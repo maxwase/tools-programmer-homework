@@ -15,10 +15,24 @@ pub const RISC_V_ENDPOINT: &str = "/risc_v";
 /// Common input to the disassembly service.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Payload {
+    /// Input binary code.
     bytes: Vec<u8>,
-    width: BitWidth,
-    syntax: Option<String>,
+    /// Architecture parameters. Should be empty by default.
+    #[serde(default)]
+    arch: ArchOptions,
+    /// Output disassembly formatting options.
     format: AssemblerOutput,
+}
+
+/// Architecture parameters.
+/// Option can be omitted (and will not be validated) for architectures that support only 1 variant
+/// or do not support it at all.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct ArchOptions {
+    /// Target architecture bit width.
+    width: Option<BitWidth>,
+    /// Output disassembly syntax.
+    syntax: Option<String>,
 }
 
 impl Payload {
@@ -46,7 +60,7 @@ pub async fn handle_mos6502(
 pub async fn handle_risc_v(
     Json(payload): Json<Payload>,
 ) -> Result<Response, DisasmError<<risc_v::RiscV as Disassembler>::Error>> {
-    let disasm = &risc_v::RiscV::new(payload.width)?;
+    let disasm = &risc_v::RiscV::new(payload.arch.width.ok_or(DisasmError::MissingInfo)?)?;
     let res = disasm.disassemble(payload.bytes(), &payload.format)?;
 
     Ok(Json(res).into_response())
@@ -55,12 +69,12 @@ pub async fn handle_risc_v(
 pub async fn handle_x86(
     Json(payload): Json<Payload>,
 ) -> Result<Response, DisasmError<<x86::X86 as Disassembler>::Error>> {
-    let syntax = match &payload.syntax {
+    let syntax = match &payload.arch.syntax {
         Some(requested) => x86::Syntax::from_str(requested)?,
         None => x86::Syntax::default(),
     };
 
-    let disasm = x86::X86::new(syntax, payload.width)?;
+    let disasm = x86::X86::new(syntax, payload.arch.width.ok_or(DisasmError::MissingInfo)?)?;
     let res = disasm.disassemble(payload.bytes(), &payload.format)?;
 
     Ok(Json(res).into_response())
@@ -127,9 +141,11 @@ mod tests {
 
         let payload = Payload {
             bytes: bytes.to_vec(),
-            width: BitWidth::Bit8,
             format: AssemblerOutput::default(),
-            syntax: None,
+            arch: ArchOptions {
+                width: Some(BitWidth::Bit8),
+                syntax: None,
+            },
         };
 
         let url = url(MOS6502_ENDPOINT);
@@ -142,9 +158,11 @@ mod tests {
         let client = reqwest::Client::new();
         let payload = Payload {
             bytes: MOS6502_TEST_BYTES.to_vec(),
-            width: BitWidth::Bit8,
             format: AssemblerOutput::default().with_addresses(ShowAddress::Start(0xA)),
-            syntax: None,
+            arch: ArchOptions {
+                width: Some(BitWidth::Bit8),
+                syntax: None,
+            },
         };
 
         let url = url(MOS6502_ENDPOINT);
@@ -164,9 +182,11 @@ mod tests {
         let client = reqwest::Client::new();
         let payload = Payload {
             bytes: MOS6502_TEST_BYTES.to_vec(),
-            width: BitWidth::Bit8,
             format: AssemblerOutput::default().with_addresses(ShowAddress::Start(0xA)),
-            syntax: None,
+            arch: ArchOptions {
+                width: Some(BitWidth::Bit8),
+                syntax: None,
+            },
         };
 
         let url = url(MOS6502_ENDPOINT);
@@ -186,9 +206,11 @@ mod tests {
         let client = reqwest::Client::new();
         let payload = Payload {
             bytes: MOS6502_TEST_BYTES.to_vec(),
-            width: BitWidth::Bit8,
             format: AssemblerOutput::default().with_addresses(ShowAddress::None),
-            syntax: None,
+            arch: ArchOptions {
+                width: Some(BitWidth::Bit8),
+                syntax: None,
+            },
         };
 
         let url = url(MOS6502_ENDPOINT);
@@ -204,11 +226,13 @@ mod tests {
         let client = reqwest::Client::new();
         let payload = Payload {
             bytes: MOS6502_TEST_BYTES.to_vec(),
-            width: BitWidth::Bit8,
             format: AssemblerOutput::default()
                 .with_addresses(ShowAddress::None)
                 .with_upper_case(false),
-            syntax: None,
+            arch: ArchOptions {
+                width: Some(BitWidth::Bit8),
+                syntax: None,
+            },
         };
 
         let url = url(MOS6502_ENDPOINT);
@@ -224,14 +248,16 @@ mod tests {
         let client = reqwest::Client::new();
         let payload = Payload {
             bytes: MOS6502_TEST_BYTES.to_vec(),
-            width: BitWidth::Bit8,
             format: AssemblerOutput::default()
                 .with_cycles(true)
                 .with_symbol_table(HashMap::from([(
                     SymbolInfo::new(0xBA28, Scope::Global),
                     "SUBROUTINE".to_string(),
                 )])),
-            syntax: None,
+            arch: ArchOptions {
+                width: Some(BitWidth::Bit8),
+                syntax: None,
+            },
         };
 
         let url = url(MOS6502_ENDPOINT);
@@ -253,9 +279,11 @@ mod tests {
 
         let payload = Payload {
             bytes,
-            width: BitWidth::Bit8,
             format: AssemblerOutput::default().with_stop(0xA),
-            syntax: None,
+            arch: ArchOptions {
+                width: Some(BitWidth::Bit8),
+                syntax: None,
+            },
         };
 
         let url = url(MOS6502_ENDPOINT);
@@ -282,9 +310,11 @@ mod tests {
 
         let mut payload = Payload {
             bytes,
-            width: BitWidth::Bit64,
             format: AssemblerOutput::default().with_stop(0xA),
-            syntax: Some("att".to_string()),
+            arch: ArchOptions {
+                width: Some(BitWidth::Bit64),
+                syntax: Some("att".to_string()),
+            },
         };
 
         let url = url(X86_ENDPOINT);
@@ -299,7 +329,7 @@ mod tests {
         ];
         assert_eq!(expected.as_slice(), resp);
 
-        payload.syntax = None;
+        payload.arch.syntax = None;
 
         let resp = client.post(url).json(&payload).send().await.unwrap();
         let resp: Vec<String> = resp.json().await.unwrap();
@@ -320,9 +350,11 @@ mod tests {
 
         let payload = Payload {
             bytes,
-            width: BitWidth::Bit16,
             format: AssemblerOutput::default(),
-            syntax: None,
+            arch: ArchOptions {
+                width: Some(BitWidth::Bit16),
+                syntax: None,
+            },
         };
 
         let url = url(RISC_V_ENDPOINT);

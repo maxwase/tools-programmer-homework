@@ -12,6 +12,7 @@ mod server;
 async fn main() {
     tracing_subscriber::fmt().init();
 
+    // such separation allows to introduce conflicting and target-specific options if needed
     let routes = Router::new()
         .route(MOS6502_ENDPOINT, post(server::handle_mos6502))
         .route(X86_ENDPOINT, post(server::handle_x86))
